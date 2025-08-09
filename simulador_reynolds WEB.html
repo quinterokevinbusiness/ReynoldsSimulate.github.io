@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Simulador Reynolds — Tubería Realista (SVG + Trails con Fade)</title>
+  <style>
+    :root{--bg:#eef3f7}
+    *{box-sizing:border-box;font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, Arial}
+    body{margin:0; min-height:100vh; background:var(--bg); display:flex; align-items:center; justify-content:center; padding:28px}
+    .card{width:100%; max-width:1200px; background:#fff; border-radius:12px; padding:18px; box-shadow:0 8px 30px rgba(12,18,30,0.08)}
+    h1{margin:0 0 8px 0; font-size:20px}
+    .controls{display:flex; gap:12px; align-items:center; margin-bottom:12px}
+    .controls input[type=range]{flex:1}
+    .label{min-width:140px}
+    .svg-wrap{width:100%; background:linear-gradient(180deg,#e9eef6,#f8fafc); border-radius:10px; padding:12px}
+    svg{width:100%; height:460px; display:block}
+    .footer{font-size:13px; color:#556; margin-top:10px}
+    .pill{padding:6px 10px; border-radius:999px; background:rgba(0,0,0,0.04)}
+    .controls-right{display:flex;gap:10px;align-items:center}
+    button{background:#111827;color:#fff;border:0;padding:8px 10px;border-radius:8px;cursor:pointer}
+    .scale{display:flex;gap:8px;align-items:center}
+    .counter{font-weight:700}
+    /* smooth transitions for trail fade */
+    .trail { transition: opacity 0.6s linear; }
+    @media(max-width:900px){.controls{flex-direction:column;align-items:stretch}.label{min-width:unset}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <h1>Simulador — Tubería Realista (Trails + Fade)</h1>
+        <small>Las partículas dejan rastros semitransparentes y largos; mueve el slider para cambiar Re</small>
+      </div>
+      <div style="text-align:right">
+        <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">
+          <div class="pill">Re = <span id="reDisp" style="font-weight:700">1000</span></div>
+          <div id="regDisp" style="margin-left:6px;color:#2b6cb0">Laminar</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls" style="margin-top:12px">
+      <div class="label">Número de Reynolds</div>
+      <input id="reSlider" type="range" min="500" max="9000" step="100" value="1000">
+      <div class="controls-right">
+        <button id="pauseBtn">Pausar</button>
+        <div class="scale">Velocidad: <span id="speedScale" style="font-weight:700; margin-left:6px">1.0×</span></div>
+        <div style="width:12px"></div>
+        <div>Partículas: <span id="partCount" class="counter">0</span></div>
+      </div>
+    </div>
+
+    <div class="svg-wrap">
+      <svg id="pipeSVG" viewBox="0 0 1200 360" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="metalG" x1="0" x2="1">
+            <stop offset="0%" stop-color="#d8dde3"/>
+            <stop offset="50%" stop-color="#f6f8fa"/>
+            <stop offset="100%" stop-color="#cbd3da"/>
+          </linearGradient>
+          <linearGradient id="innerG" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="#eef4fb"/>
+            <stop offset="100%" stop-color="#dbe7f5"/>
+          </linearGradient>
+          <clipPath id="pipeClip">
+            <rect x="40" y="60" width="1120" height="220" rx="110" ry="110" />
+          </clipPath>
+          <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="6" stdDeviation="12" flood-color="#000" flood-opacity="0.12" />
+          </filter>
+        </defs>
+
+        <g filter="url(#softShadow)">
+          <rect x="20" y="40" width="1160" height="240" rx="130" fill="url(#metalG)" stroke="#bfc7cf" stroke-width="1.5" />
+        </g>
+        <rect x="40" y="60" width="1120" height="220" rx="110" fill="url(#innerG)" stroke="#c7d6e6" stroke-width="1" />
+        <path d="M60 80 C260 40, 940 40, 1140 80" stroke="#ffffff" stroke-opacity="0.08" stroke-width="18" fill="none" />
+
+        <!-- trails and particles -->
+        <g id="trailGroup" clip-path="url(#pipeClip)"></g>
+        <g id="particleGroup" clip-path="url(#pipeClip)"></g>
+
+        <g clip-path="url(#pipeClip)" opacity="0.06">
+          <path d="M60 220 C240 150, 960 150, 1140 220" stroke="#121826" stroke-width="2" fill="none"/>
+          <path d="M60 180 C240 120, 960 120, 1140 180" stroke="#121826" stroke-width="1.5" fill="none" />
+        </g>
+      </svg>
+    </div>
+
+    <div class="footer">Azul = Laminar • Naranja = Transitorio • Rojo = Turbulento</div>
+  </div>
+
+<script>
+// Settings
+const leftX = 40, topY = 60, width = 1120, height = 220;
+const trajCount = 12;
+const numParticles = 140; // balanced density
+let trailLength = 32; // reduced trail length
+
+// Elements
+const slider = document.getElementById('reSlider');
+const reDisp = document.getElementById('reDisp');
+const regDisp = document.getElementById('regDisp');
+const pauseBtn = document.getElementById('pauseBtn');
+const trailGroup = document.getElementById('trailGroup');
+const particleGroup = document.getElementById('particleGroup');
+const speedScaleLabel = document.getElementById('speedScale');
+const partCountLabel = document.getElementById('partCount');
+
+let particles = [];
+let trajectories = [];
+let trails = [];
+let running = true;
+let lastT = performance.now();
+
+function colorForRe(re){
+  if(re < 2000) return {color:'#2563eb', name:'Laminar', rgba:'rgba(37,99,235,'};
+  if(re <= 4000) return {color:'#f97316', name:'Transitorio', rgba:'rgba(249,115,22,'};
+  return {color:'#dc2626', name:'Turbulento', rgba:'rgba(220,38,38,'};
+}
+
+function initTrajectories(){
+  trajectories = [];
+  for(let i=0;i<trajCount;i++) trajectories.push({rel: i/(trajCount-1), phase: Math.random()*Math.PI*2});
+}
+
+function initParticlesAndTrails(){
+  particleGroup.innerHTML = '';
+  trailGroup.innerHTML = '';
+  particles = [];
+  trails = [];
+
+  for(let i=0;i<numParticles;i++){
+    const ti = Math.floor(Math.random()*trajectories.length);
+    const rel = trajectories[ti].rel;
+    const x = leftX + Math.random()*width;
+
+    const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    c.setAttribute('cx', x);
+    c.setAttribute('cy', topY + 10 + rel*(height-20));
+    c.setAttribute('r', 1.4 + Math.random()*1.6);
+    c.setAttribute('fill','#2563eb');
+    c.setAttribute('opacity',0.98);
+    particleGroup.appendChild(c);
+
+    // trail polyline
+    const pl = document.createElementNS('http://www.w3.org/2000/svg','polyline');
+    pl.setAttribute('fill','none');
+    pl.setAttribute('stroke-width',1.1);
+    pl.setAttribute('stroke-linecap','round');
+    pl.setAttribute('stroke-linejoin','round');
+    pl.classList.add('trail');
+    trailGroup.appendChild(pl);
+
+    particles.push({el:c,x,ti,rel,phase:Math.random()*Math.PI*2,baseR:1.4 + Math.random()*1.6});
+    trails.push({points:[], el:pl});
+  }
+  partCountLabel.textContent = particles.length;
+}
+
+function noise(t, freq, phase){
+  return Math.sin(t*freq + phase) + 0.6*Math.cos(t*(freq*1.8) + phase*1.1) + 0.33*Math.sin(t*(freq*2.7) + phase*0.7);
+}
+
+function trajectoryY(rel,x,info,time){
+  const t = (x - leftX) / width;
+  const centerFactor = 1 - 4*(rel-0.5)*(rel-0.5);
+  const parabolaAmp = 28;
+  const parab = parabolaAmp * centerFactor * ( (t-0.5)*(t-0.5) - 0.25 );
+
+  const re = parseInt(slider.value);
+  let intensity = 0;
+  if(re <= 2000) intensity = 0;
+  else if(re >= 4000) intensity = 1;
+  else intensity = (re-2000)/2000;
+
+  const baseFreq = 6 + rel*12;
+  const wiggleAmp = intensity * (10 + 26*rel);
+  const w = noise(time*0.002 + t*12, baseFreq, info.phase) * wiggleAmp;
+  const burst = noise(time*0.02 + info.phase, 18 + rel*10, info.phase*0.7) * (intensity*8);
+  const randomMod = Math.sin(time*0.003 + info.phase*1.4 + rel*5) * 2;
+  const trans = (intensity > 0 && intensity < 1) ? Math.sin(time*0.005 + info.phase*0.9 + rel*3) * (6*(1-intensity)) : 0;
+
+  const y = topY + 10 + rel*(height-20) + parab*(1-intensity) + w + burst*0.5 + trans + randomMod*(intensity*0.8);
+  return y;
+}
+
+function updateTrailsAndParticles(time){
+  const re = parseInt(slider.value);
+  const info = colorForRe(re);
+  reDisp.textContent = re;
+  regDisp.textContent = info.name;
+  regDisp.style.color = info.color;
+  speedScaleLabel.textContent = (1 + (re/9000)*3).toFixed(2) + '×';
+
+  const baseSpeed = 0.45 + (re/9000)*2.6;
+  const intensity = Math.min(1, Math.max(0, (re-2000)/2000));
+
+  for(let i=0;i<particles.length;i++){
+    const p = particles[i];
+
+    const vx = baseSpeed * (1 + 0.9*(Math.sin(p.phase*2 + time*0.002) * 0.4 + 0.2));
+    p.x += vx * ((time - lastT)/16.6 || 1);
+
+    const chaos = intensity * 2.6;
+    const lateral = noise(time*0.003 + p.phase, 10 + p.rel*28, p.phase*0.7) * (8*chaos) + (Math.sin(time*0.012 + p.phase*2)*4*chaos);
+
+    const baseY = trajectoryY(p.rel, p.x, {phase: p.phase*0.9}, time);
+    const y = baseY + lateral;
+    p.y = y;
+
+    p.el.setAttribute('cx', p.x.toFixed(2));
+    p.el.setAttribute('cy', p.y.toFixed(2));
+    p.el.setAttribute('fill', info.color);
+    const rr = p.baseR * (1 + intensity*0.5*Math.sin(time*0.01 + p.phase*1.5));
+    p.el.setAttribute('r', Math.max(0.7, rr.toFixed(2)));
+
+    // update trail points
+    const tr = trails[i];
+    tr.points.push([p.x, p.y]);
+    if(tr.points.length > trailLength) tr.points.shift();
+
+    // build points string
+    const ptsStr = tr.points.map(pt => `${pt[0].toFixed(2)},${pt[1].toFixed(2)}`).join(' ');
+    tr.el.setAttribute('points', ptsStr);
+    // stroke with low alpha so trails don't overpower particles
+    const alpha = 0.14 * (0.6 + 0.4*(1 - Math.abs(0.5-p.rel)*2));
+    tr.el.setAttribute('stroke', info.rgba + alpha + ')');
+    const sw = 0.8 + 1.2*p.rel + intensity*1.4;
+    tr.el.setAttribute('stroke-width', Math.max(0.6, sw.toFixed(2)));
+    tr.el.style.opacity = 0.9;
+  }
+
+  // wrap and fade-out on respawn
+  for(let i=0;i<particles.length;i++){
+    const p = particles[i];
+    if(p.x > leftX + width + 8){
+      p.x = leftX - Math.random()*60;
+      // fade out existing trail smoothly
+      const tr = trails[i];
+      tr.el.style.opacity = 0; // CSS transition handles fade
+      // after fade completes, clear points and restore opacity
+      setTimeout(()=>{ tr.points = []; tr.el.setAttribute('points',''); tr.el.style.opacity = 1; }, 600);
+      // occasionally reassign layer to mix
+      if(Math.random() < 0.35){
+        p.ti = Math.floor(Math.random()*trajectories.length);
+        p.rel = trajectories[p.ti].rel;
+      }
+    }
+  }
+}
+
+function animate(time){
+  if(!running){ lastT = time; requestAnimationFrame(animate); return; }
+  const dt = time - lastT;
+  lastT = time;
+  updateTrailsAndParticles(time);
+  requestAnimationFrame(animate);
+}
+
+// UI events
+slider.addEventListener('input', ()=>{
+  const re = parseInt(slider.value);
+  const info = colorForRe(re);
+  reDisp.textContent = re;
+  regDisp.textContent = info.name;
+  regDisp.style.color = info.color;
+});
+
+pauseBtn.addEventListener('click', ()=>{
+  running = !running;
+  pauseBtn.textContent = running ? 'Pausar' : 'Reanudar';
+});
+
+// init
+initTrajectories();
+initParticlesAndTrails();
+requestAnimationFrame(animate);
+
+</script>
+</body>
+</html>
