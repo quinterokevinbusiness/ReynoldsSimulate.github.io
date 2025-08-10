@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Flujo por Kevin Quintero - LS Group</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&display=swap');
+        
+        :root {
+            --laminar-color: #4A90E2; --transient-color: #F5A623; --turbulent-color: #D0021B;
+            --bg-page: #f0f2f5;
+            --bg-container: #ffffff;
+            --bg-input: #f8f9fa;
+            --border-color: #e9ecef;
+            --text-dark: #212529;
+            --text-light: #888;
+            --text-secondary: #495057;
+            --pipe-wall: #c5cad1;
+            --pipe-bg: #eef1f5;
+        }
+
+        body.dark-theme {
+            --bg-page: #1a1b1e;
+            --bg-container: #2c2d30;
+            --bg-input: #3a3b3d;
+            --border-color: #444548;
+            --text-dark: #e8e6e3;
+            --text-light: #9e9e9e;
+            --text-secondary: #adb5bd;
+            --pipe-wall: #5a5b5e;
+            --pipe-bg: #222326;
+        }
+
+        body {
+            font-family: 'Manrope', sans-serif; display: flex; justify-content: center; align-items: center;
+            min-height: 100vh; margin: 0; padding: 20px; background-color: var(--bg-page); color: var(--text-dark);
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        .main-container { display: flex; gap: 30px; align-items: flex-start; }
+        .simulator-container {
+            width: 950px; padding: 40px; background-color: var(--bg-container); border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.07); display: grid; grid-template-columns: 100px 1fr;
+            grid-template-rows: auto auto auto 1fr auto; gap: 20px 40px;
+            grid-template-areas: "controls display" "controls pipe" "controls diameter-slider" "controls buttons";
+            transition: background-color 0.3s ease;
+        }
+        .controls { grid-area: controls; display: flex; flex-direction: column; align-items: center; justify-content: start; padding-top: 10px; }
+        .slider-label { writing-mode: vertical-rl; transform: rotate(180deg); margin-bottom: 20px; font-size: 14px; color: var(--text-light); user-select: none; }
+        .slider-wrapper { display: flex; justify-content: center; align-items: center; height: 300px; }
+        .flow-slider { -webkit-appearance: none; appearance: none; width: 300px; height: 12px; background: linear-gradient(to right, var(--laminar-color), #7ED321, var(--transient-color), var(--turbulent-color)); border-radius: 6px; outline: none; cursor: pointer; transform: rotate(-90deg); }
+        .flow-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 30px; height: 30px; background: var(--bg-container); border-radius: 50%; border: 1px solid var(--border-color); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); }
+        .display-panel { grid-area: display; padding-left: 20px; display: flex; justify-content: space-between; flex-wrap: wrap; }
+        .data-column { display: flex; flex-direction: column; gap: 15px; }
+        .data-column h2 { margin: 0; font-size: 18px; color: var(--text-light); font-weight: 400; }
+        .flow-velocity { font-size: 48px; font-weight: 800; color: var(--text-dark); line-height: 1.1; }
+        .flow-velocity span { font-size: 22px; font-weight: 400; color: var(--text-light); margin-left: 5px; }
+        .numeric-display h3 { margin: 0; font-size: 16px; color: var(--text-light); font-weight: 400; }
+        .numeric-display span { font-size: 28px; font-weight: 700; color: var(--text-dark); display: block; line-height: 1.1; }
+        .input-group { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+        .pipe-visualization { grid-area: pipe; height: 150px; background: var(--pipe-bg); border-top: 15px solid var(--pipe-wall); border-bottom: 15px solid var(--pipe-wall); position: relative; overflow: hidden; transition: height 0.3s ease-in-out, background-color 0.3s ease, border-color 0.3s ease; }
+        #flow-canvas { display: block; width: 100%; height: 100%; }
+        .flow-buttons { grid-area: buttons; display: flex; flex-wrap: wrap; gap: 15px; padding-left: 20px; align-items: center; justify-content: space-between; }
+        .flow-status-indicators { display: flex; gap: 15px; }
+        .flow-button { padding: 10px 25px; border: none; border-radius: 20px; font-size: 14px; font-weight: 700; background-color: var(--bg-input); color: var(--text-light); transition: all 0.3s ease; display: none; }
+        .flow-button.active { display: inline-flex; color: white; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        #laminar-btn.active { background-color: var(--laminar-color); }
+        #turbulent-btn.active { background-color: var(--turbulent-color); }
+        #transient-btn.active { background-color: var(--transient-color); }
+        #mode-switch-btn { padding: 10px 20px; font-size: 14px; font-weight: 700; border-radius: 8px; border: 1px solid var(--laminar-color); color: var(--laminar-color); background-color: transparent; cursor: pointer; transition: all 0.2s ease; }
+        #mode-switch-btn:hover { background-color: var(--laminar-color); color: white; }
+        .hidden { display: none !important; }
+        .calculator-interface { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+        .calc-input-group { display: flex; align-items: center; background-color: var(--bg-input); border: 1px solid var(--border-color); border-radius: 10px; padding: 8px 12px; }
+        .calc-icon { width: 24px; height: 24px; margin-right: 12px; color: var(--text-light); flex-shrink: 0; }
+        .calc-input-group label { font-size: 14px; font-weight: 700; color: var(--text-secondary); margin-right: auto; }
+        .calc-input-group input, .calc-input-group .input-unit { font-family: 'Manrope', sans-serif; font-size: 16px; border: none; background: none; outline: none; color: var(--text-dark); }
+        .calc-input-group input[type="number"] { width: 80px; text-align: right; font-weight: 700; }
+        .calc-input-group .input-unit { color: var(--text-light); margin-left: 4px; }
+        .original-select { display: none; }
+        .custom-select-container { position: relative; width: 100%; }
+        .select-trigger { display: flex; align-items: center; width: 100%; cursor: pointer; }
+        #selected-fluid-name { font-size: 16px; font-weight: 700; color: var(--text-dark); }
+        .select-options { position: absolute; top: calc(100% + 5px); left: 0; right: 0; background-color: var(--bg-container); border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); z-index: 10; overflow: hidden; opacity: 0; transform: translateY(-10px); visibility: hidden; transition: all 0.2s ease-in-out; }
+        .custom-select-container.open .select-options { opacity: 1; transform: translateY(0); visibility: visible; }
+        .select-option { display: flex; align-items: center; padding: 12px 15px; cursor: pointer; transition: background-color 0.2s ease; }
+        .select-option:hover { background-color: var(--bg-input); }
+        .select-option span { font-size: 16px; }
+        .explanation-panel { width: 400px; background-color: var(--bg-container); border-radius: 20px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.07); padding: 25px; flex-shrink: 0; display: flex; flex-direction: column; transition: background-color 0.3s ease; }
+        .tab-nav { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--border-color); margin-bottom: 20px; }
+        .tab-btn { padding: 10px 15px; border: none; background: none; cursor: pointer; font-family: 'Manrope', sans-serif; font-size: 14px; font-weight: 600; color: var(--text-light); position: relative; transition: color 0.2s ease; }
+        .tab-btn:hover { color: var(--text-dark); }
+        .tab-btn.active { color: var(--laminar-color); font-weight: 800; }
+        .tab-btn.active::after { content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background-color: var(--laminar-color); }
+        .tab-content { display: none; animation: fadeIn 0.5s ease; }
+        .tab-content.active { display: block; }
+        .tab-content h4 { font-size: 18px; margin-top: 0; margin-bottom: 10px; color: var(--text-dark); }
+        .tab-content p { font-size: 15px; line-height: 1.6; color: var(--text-secondary); margin-bottom: 15px; }
+        .tab-content strong { color: var(--text-dark); }
+        .tab-content .formula-container { background-color: var(--bg-input); border-radius: 8px; padding: 15px; margin-top: 20px; font-family: 'Times New Roman', serif; font-style: italic; }
+        .formula { display: flex; align-items: center; justify-content: center; font-size: 22px; }
+        .formula-lhs { margin-right: 10px; }
+        .fraction { display: flex; flex-direction: column; align-items: center; }
+        .numerator { padding: 5px 10px; }
+        .fraction-bar { width: 100%; height: 2px; background-color: var(--text-dark); }
+        .denominator { padding: 5px 10px; }
+        .diameter-slider-container { grid-area: diameter-slider; padding-left: 20px; display: flex; flex-direction: column; gap: 5px; justify-content: center; }
+        .diameter-header { display: flex; justify-content: space-between; width: 100%; font-size: 14px; color: var(--text-light); }
+        #diameter-slider-value { font-weight: 700; color: var(--text-dark); }
+        input[type="range"].horizontal-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 8px; background: var(--border-color); border-radius: 4px; outline: none; }
+        input[type="range"].horizontal-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; background: var(--laminar-color); border-radius: 50%; cursor: pointer; box-shadow: 0 1px 5px rgba(0,0,0,0.15); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .panel-footer { margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border-color); }
+        .footer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .footer-links { display: flex; justify-content: center; gap: 25px; }
+        .footer-links a { color: var(--text-light); transition: color 0.2s ease; }
+        .footer-links a:hover { color: var(--laminar-color); }
+        .footer-links svg { width: 28px; height: 28px; }
+        .copyright { text-align: center; font-size: 12px; color: var(--text-light); margin-top: 15px; }
+        #book-link svg { animation: icon-pulse 2s infinite ease-in-out; }
+        @keyframes icon-pulse { 0%, 100% { color: var(--laminar-color); } 33% { color: var(--transient-color); } 66% { color: var(--turbulent-color); } }
+        #theme-toggle-btn { background: none; border: none; cursor: pointer; color: var(--text-light); padding: 0; }
+        #theme-toggle-btn svg { width: 24px; height: 24px; }
+        .dark-theme .sun-icon { display: block; } .dark-theme .moon-icon { display: none; }
+        .sun-icon { display: none; } .moon-icon { display: block; }
+    </style>
+</head>
+<body>
+
+<main class="main-container">
+    <div class="simulator-container">
+        <div class="controls" id="slider-controls">
+            <span class="slider-label">Intensidad</span>
+            <div class="slider-wrapper"> <input type="range" min="0" max="100" value="0" class="flow-slider" id="flow-slider"> </div>
+        </div>
+        <div class="display-panel">
+            <div class="data-column">
+                <h2>Velocidad de Flujo</h2>
+                <p class="flow-velocity" id="velocity-value">0,00<span>cm/s</span></p>
+                <div class="numeric-display" id="reynolds-display">
+                    <h3>Número de Reynolds</h3>
+                    <span id="reynolds-value">0</span>
+                </div>
+                <div class="numeric-display" id="flow-rate-display">
+                    <h3>Caudal (Q)</h3>
+                    <span id="flow-rate-value">0,00 L/s</span>
+                </div>
+            </div>
+            <div class="input-group">
+                <div class="calculator-interface hidden" id="calculator-mode-ui">
+                    <div class="calc-input-group">
+                        <svg class="calc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <label for="velocity-input">Velocidad</label>
+                        <input type="number" id="velocity-input" value="0" min="0">
+                        <span class="input-unit">cm/s</span>
+                    </div>
+                    <div class="calc-input-group">
+                        <svg class="calc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+                        <label for="diameter-input">Diámetro</label>
+                        <input type="number" id="diameter-input" value="100" min="1" max="1000">
+                        <span class="input-unit">mm</span>
+                    </div>
+                    <div class="calc-input-group">
+                        <div class="custom-select-container" id="custom-select">
+                            <div class="select-trigger">
+                                <svg class="calc-icon" id="selected-fluid-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0L12 2.69z"></path></svg>
+                                <label>Fluido</label>
+                                <span id="selected-fluid-name">Agua</span>
+                            </div>
+                            <div class="select-options"></div>
+                        </div>
+                    </div>
+                </div>
+                <select id="fluid-selector" class="original-select">
+                    <option value="water" selected>Agua</option>
+                    <option value="air">Aire</option>
+                    <option value="glycerin">Glicerina</option>
+                    <option value="honey">Miel</option>
+                </select>
+            </div>
+        </div>
+        <div class="pipe-visualization"> <canvas id="flow-canvas"></canvas> </div>
+        <div class="diameter-slider-container" id="diameter-slider-controls">
+            <div class="diameter-header">
+                <label>Diámetro</label>
+                <span id="diameter-slider-value">100 mm</span>
+            </div>
+            <input type="range" id="diameter-slider" class="horizontal-slider" min="1" max="1000" value="100">
+        </div>
+        <div class="flow-buttons">
+            <div class="flow-status-indicators">
+                <button class="flow-button" id="laminar-btn">Flujo Laminar</button>
+                <button class="flow-button" id="transient-btn">Flujo Transitorio</button>
+                <button class="flow-button" id="turbulent-btn">Flujo Turbulento</button>
+            </div>
+            <button id="mode-switch-btn">Modo Calculadora</button>
+        </div>
+    </div>
+
+    <aside class="explanation-panel">
+        <div class="tab-nav" id="tab-navigation">
+            <button class="tab-btn active" data-tab="reynolds">Reynolds</button>
+            <button class="tab-btn" data-tab="flowrate">Caudal</button>
+            <button class="tab-btn" data-tab="velocity">Velocidad</button>
+            <button class="tab-btn" data-tab="diameter">Diámetro</button>
+            <button class="tab-btn" data-tab="viscosity">Viscosidad</button>
+        </div>
+        <div class="tab-content-container">
+            <div id="reynolds" class="tab-content active">
+                <h4>Número de Reynolds (Re)</h4>
+                <p>Es un valor <strong>adimensional</strong> que predice los patrones de flujo. Determina si el flujo es ordenado (laminar) o caótico (turbulento).</p>
+                <p><strong>Re &lt; 2300:</strong> Flujo <strong>Laminar</strong>.</p>
+                <p><strong>2300 &lt; Re &lt; 4000:</strong> Flujo <strong>Transitorio</strong>.</p>
+                <p><strong>Re &gt; 4000:</strong> Flujo <strong>Turbulento</strong>.</p>
+                <div class="formula-container">
+                    <div class="formula">
+                        <div class="formula-lhs">Re =</div>
+                        <div class="fraction">
+                            <div class="numerator">ρ v D</div>
+                            <div class="fraction-bar"></div>
+                            <div class="denominator">μ</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="flowrate" class="tab-content">
+                <h4>Caudal (Q)</h4>
+                <p>El caudal o tasa de flujo volumétrico es el <strong>volumen de fluido</strong> que pasa a través de una sección transversal por unidad de tiempo.</p>
+                <p>Es una medida fundamental para el dimensionamiento de tuberías y bombas. Aquí lo medimos en <strong>Litros por segundo (L/s)</strong>.</p>
+                <div class="formula-container">
+                    <div class="formula">
+                        <div class="formula-lhs">Q = A · v</div>
+                    </div>
+                </div>
+            </div>
+            <div id="velocity" class="tab-content">
+                <h4>Velocidad (v)</h4>
+                <p>Representa la velocidad promedio del fluido dentro de la tubería. Es un factor clave en el cálculo del Número de Reynolds.</p>
+                <p>A mayor velocidad, mayor es la inercia del fluido, lo que tiende a favorecer el flujo turbulento. La medimos en <strong>centímetros por segundo (cm/s)</strong>.</p>
+            </div>
+            <div id="diameter" class="tab-content">
+                <h4>Diámetro (D)</h4>
+                <p>Es el diámetro interno de la tubería. Un diámetro más grande afecta las fuerzas viscosas en relación con las inerciales.</p>
+                <p>Para tuberías no circulares, se utiliza el <strong>Diámetro Hidráulico (Dh)</strong>, que relaciona el área (A) con el perímetro mojado (P) de la sección.</p>
+                <div class="formula-container">
+                    <div class="formula">
+                        <div class="formula-lhs">Dh =</div>
+                        <div class="fraction">
+                            <div class="numerator">4 A</div>
+                            <div class="fraction-bar"></div>
+                            <div class="denominator">P</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="viscosity" class="tab-content">
+                <h4>Viscosidad Dinámica (μ)</h4>
+                <p>La viscosidad es una medida de la <strong>resistencia interna</strong> de un fluido a fluir. Se puede pensar en ella como el "espesor" del fluido.</p>
+                <p>Un fluido muy viscoso como la <strong>miel (μ alta)</strong> resiste fuertemente el movimiento y tiende a permanecer laminar. Un fluido como el <strong>aire (μ baja)</strong> fluye con facilidad y se vuelve turbulento más rápidamente.</p>
+            </div>
+        </div>
+        
+        <footer class="panel-footer">
+            <div class="footer-header">
+                <div class="footer-links">
+                    <a href="https://www.linkedin.com/in/kevinquintero-mechanical" target="_blank" title="LinkedIn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg></a>
+                    <a href="https://www.instagram.com/ls.ebooks/" target="_blank" title="Instagram"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.85s-.011 3.584-.069 4.85c-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07s-3.584-.012-4.85-.07c-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.85s.012-3.584.07-4.85c.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.85-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948s.014 3.667.072 4.947c.2 4.359 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072s3.667-.014 4.947-.072c4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.947s-.014-3.667-.072-4.947c-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.689-.073-4.948-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.162 6.162 6.162 6.162-2.759 6.162-6.162-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4s1.791-4 4-4 4 1.79 4 4-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.441 1.441 1.441 1.441-.645 1.441-1.441-.645-1.44-1.441-1.44z"/></svg></a>
+                    <a href="https://go.hotmart.com/B100647389S" target="_blank" title="Comprar libro de Simulación CFD" id="book-link"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 1h16c1.103 0 2 .897 2 2v18c0 1.103-.897 2-2 2H4c-1.103 0-2-.897-2-2V3c0-1.103.897-2 2-2zM4 3v18h16V3H4zm2 2h8v2H6V5zm0 4h12v2H6V9zm0 4h12v2H6v-2z"/></svg></a>
+                </div>
+                <button id="theme-toggle-btn" title="Cambiar Tema">
+                    <svg class="sun-icon" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                    <svg class="moon-icon" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"></path></svg>
+                </button>
+            </div>
+            <footer class="copyright">
+                © 2025 KEVIN QUINTERO - LS GROUP
+            </footer>
+        </footer>
+    </aside>
+</main>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- CONSTANTES ---
+    const PARTICLE_COUNT = 300, PARTICLE_RADIUS = 3.5, RE_LAMINAR_LIMIT = 2300, RE_TURBULENT_LIMIT = 4000, RE_MAX_TARGET = 9000;
+    const SPRING_STRENGTH = 0.05, TURBULENCE_INTENSITY = 1.8, DAMPING = 0.92;
+    const MIN_ANIMATION_SPEED = 1.0, MAX_ANIMATION_SPEED = 6.0, SPEED_CURVE_EXPONENT = 0.6;
+    const TRAIL_LENGTH = 20;
+    const MIN_DIAMETER_MM = 1, MAX_DIAMETER_MM = 1000;
+    const MIN_PIPE_HEIGHT_PX = 40, MAX_PIPE_HEIGHT_PX = 150;
+
+    const FLUIDS = {
+        water:    { name: "Agua",      density: 997,   viscosity: 0.00089,   icon: `<path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0L12 2.69z"></path>` },
+        air:      { name: "Aire",      density: 1.225, viscosity: 0.0000181, icon: `<path d="M5 12c0-2.8 2.2-5 5-5s5 2.2 5 5c0 1.9-1.1 3.6-2.7 4.4"></path><path d="M2.8 17.3c-.6-1.1-.9-2.4-.9-3.8 0-4.4 3.6-8 8-8s8 3.6 8 8c0 .9-.2 1.8-.5 2.6"></path><path d="M19.5 21.5c.9-.9 1.5-2.1 1.5-3.5 0-2.8-2.2-5-5-5s-5 2.2-5 5c0 .3 0 .6.1.9"></path>` },
+        glycerin: { name: "Glicerina", density: 1261,  viscosity: 1.412,     icon: `<path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0L12 2.69z"></path><path d="M12 12.5a2.5 2.5 0 01-2.5-2.5 2.5 2.5 0 01-2.5-2.5"></path>` },
+        honey:    { name: "Miel",      density: 1420,  viscosity: 10.0,      icon: `<path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0L12 2.69z"></path><path d="M12 2.69l-1.41 1.41"></path><path d="M12 2.69l1.41 1.41"></path><path d="M12 2.69v2"></path>` }
+    };
+    const COLORS = { laminar: 'rgb(74, 144, 226)', transient: 'rgb(245, 166, 35)', turbulent: 'rgb(208, 2, 27)' };
+
+    // --- ELEMENTOS DEL DOM ---
+    const slider = document.getElementById('flow-slider'), sliderControls = document.getElementById('slider-controls'), calculatorModeUI = document.getElementById('calculator-mode-ui'), velocityInput = document.getElementById('velocity-input'), modeSwitchBtn = document.getElementById('mode-switch-btn'), velocityDisplay = document.getElementById('velocity-value'), reynoldsDisplay = document.getElementById('reynolds-value'), flowRateValue = document.getElementById('flow-rate-value'), diameterInput = document.getElementById('diameter-input'), diameterSlider = document.getElementById('diameter-slider'), diameterSliderControls = document.getElementById('diameter-slider-controls'), diameterSliderValue = document.getElementById('diameter-slider-value'), fluidSelector = document.getElementById('fluid-selector'), laminarBtn = document.getElementById('laminar-btn'), transientBtn = document.getElementById('transient-btn'), turbulentBtn = document.getElementById('turbulent-btn'), pipeVisualization = document.querySelector('.pipe-visualization'), canvas = document.getElementById('flow-canvas'), ctx = canvas.getContext('2d'), customSelect = document.getElementById('custom-select'), selectedFluidIcon = document.getElementById('selected-fluid-icon'), selectedFluidName = document.getElementById('selected-fluid-name'), selectOptions = document.querySelector('.select-options'), tabNavigation = document.getElementById('tab-navigation'), tabContents = document.querySelectorAll('.tab-content'), themeToggleBtn = document.getElementById('theme-toggle-btn');
+    
+    // --- VARIABLES GLOBALES ---
+    let currentMode = 'slider', particles = [], turbulenceLevel = 0, currentAnimationVelocity = 0, currentParticleColor = COLORS.laminar;
+    
+    // --- CLASE PARTICLE ---
+    class Particle {
+        constructor() { this.x = Math.random() * canvas.width; this.baseY = canvas.height * 0.15 + Math.random() * canvas.height * 0.7; this.y = this.baseY; const centerFactor = 1 - Math.abs(this.y - canvas.height / 2) / (canvas.height / 2); this.baseSpeed = 1 + centerFactor * 1.5; this.vy = 0; this.history = []; }
+        reset() { this.x = 0; this.y = this.baseY; this.vy = 0; this.history = []; }
+        update(animationVelocity) { this.history.push({ x: this.x, y: this.y }); if (this.history.length > TRAIL_LENGTH) { this.history.shift(); } const springForce = (this.baseY - this.y) * SPRING_STRENGTH; const chaosFactor = (turbulenceLevel / 100)**2; const chaoticForce = (Math.random() - 0.5) * chaosFactor * TURBULENCE_INTENSITY; this.vy += springForce + chaoticForce; this.vy *= DAMPING; this.y += this.vy; this.x += this.baseSpeed * animationVelocity; if (this.x > canvas.width) this.reset(); }
+        draw(color) { if (this.history.length > 1) { ctx.beginPath(); ctx.moveTo(this.history[0].x, this.history[0].y); for (let i = 1; i < this.history.length; i++) { ctx.lineTo(this.history[i].x, this.history[i].y); } const trailColor = color.replace('rgb', 'rgba').replace(')', ', 0.2)'); ctx.strokeStyle = trailColor; ctx.lineWidth = 1.5; ctx.stroke(); } ctx.beginPath(); ctx.arc(this.x, this.y, PARTICLE_RADIUS, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); }
+    }
+    
+    function resetAllParticles() { ctx.clearRect(0, 0, canvas.width, canvas.height); particles = []; for (let i = 0; i < PARTICLE_COUNT; i++) { particles.push(new Particle()); } }
+    function updatePipeAndParticles() { const diameterMM = parseFloat(diameterInput.value) || 1; const diameterRatio = (Math.max(MIN_DIAMETER_MM, Math.min(MAX_DIAMETER_MM, diameterMM)) - MIN_DIAMETER_MM) / (MAX_DIAMETER_MM - MIN_DIAMETER_MM); const newHeight = MIN_PIPE_HEIGHT_PX + diameterRatio * (MAX_PIPE_HEIGHT_PX - MIN_PIPE_HEIGHT_PX); pipeVisualization.style.height = `${newHeight}px`; setTimeout(() => { canvas.width = pipeVisualization.clientWidth; canvas.height = pipeVisualization.clientHeight; resetAllParticles(); }, 0); }
+    function updateSimulation() { const diameterMM = parseFloat(diameterInput.value); const diameterMeters = diameterMM / 1000; const selectedFluid = FLUIDS[fluidSelector.value]; let velocityMeters = 0, reynoldsNumber = 0, normalizedProgress = 0; if (currentMode === 'slider') { const sliderValue = parseFloat(slider.value) || 0; normalizedProgress = sliderValue / 100; const maxVelocityMeters = (RE_MAX_TARGET * selectedFluid.viscosity) / (selectedFluid.density * diameterMeters); velocityMeters = normalizedProgress * maxVelocityMeters; reynoldsNumber = normalizedProgress * RE_MAX_TARGET; } else { const velocityCms = parseFloat(velocityInput.value) || 0; velocityMeters = velocityCms / 100; reynoldsNumber = (selectedFluid.density * velocityMeters * diameterMeters) / selectedFluid.viscosity; normalizedProgress = Math.min(reynoldsNumber / RE_MAX_TARGET, 1.0); } const areaM2 = Math.PI * Math.pow(diameterMeters / 2, 2); const flowRateLitersS = (areaM2 * velocityMeters) * 1000; const nonLinearFactor = Math.pow(normalizedProgress, SPEED_CURVE_EXPONENT); currentAnimationVelocity = MIN_ANIMATION_SPEED + nonLinearFactor * (MAX_ANIMATION_SPEED - MIN_ANIMATION_SPEED); if (reynoldsNumber <= 0) { currentAnimationVelocity = 0; } const isLaminar = reynoldsNumber < RE_LAMINAR_LIMIT && reynoldsNumber > 0; const isTurbulent = reynoldsNumber > RE_TURBULENT_LIMIT; const isTransient = !isLaminar && !isTurbulent && reynoldsNumber > 0; if (isLaminar) { turbulenceLevel = 0; currentParticleColor = COLORS.laminar; } else if (isTurbulent) { turbulenceLevel = 100; currentParticleColor = COLORS.turbulent; } else if (isTransient) { turbulenceLevel = ((reynoldsNumber - RE_LAMINAR_LIMIT) / (RE_TURBULENT_LIMIT - RE_LAMINAR_LIMIT)) * 100; currentParticleColor = COLORS.transient; } else { turbulenceLevel = 0; currentParticleColor = COLORS.laminar; } velocityDisplay.innerHTML = `${(velocityMeters * 100).toFixed(2).replace('.', ',')}<span>cm/s</span>`; reynoldsDisplay.textContent = reynoldsNumber.toLocaleString('es-ES', { maximumFractionDigits: 0 }); flowRateValue.textContent = `${flowRateLitersS.toFixed(2).replace('.', ',')} L/s`; laminarBtn.classList.toggle('active', isLaminar); transientBtn.classList.toggle('active', isTransient); turbulentBtn.classList.toggle('active', isTurbulent); }
+    function switchMode() { currentMode = (currentMode === 'slider') ? 'calculator' : 'slider'; if (currentMode === 'calculator') { modeSwitchBtn.textContent = 'Modo Deslizador'; sliderControls.classList.add('hidden'); calculatorModeUI.classList.remove('hidden'); diameterSliderControls.classList.add('hidden'); const currentVelocity = parseFloat(velocityDisplay.textContent.replace(',', '.')) || 0; velocityInput.value = currentVelocity.toFixed(2); } else { modeSwitchBtn.textContent = 'Modo Calculadora'; sliderControls.classList.remove('hidden'); calculatorModeUI.classList.add('hidden'); diameterSliderControls.classList.remove('hidden'); const currentReynolds = parseFloat(reynoldsDisplay.textContent.replace(/\./g, '')) || 0; slider.value = (currentReynolds / RE_MAX_TARGET) * 100; } updateSimulation(); }
+    function setupCustomSelect() { Object.keys(FLUIDS).forEach(key => { const fluid = FLUIDS[key]; const optionEl = document.createElement('div'); optionEl.className = 'select-option'; optionEl.dataset.value = key; optionEl.innerHTML = `<svg class="calc-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${fluid.icon}</svg><span>${fluid.name}</span>`; optionEl.addEventListener('click', () => { fluidSelector.value = key; selectedFluidName.textContent = fluid.name; selectedFluidIcon.innerHTML = fluid.icon; customSelect.classList.remove('open'); updateSimulation(); }); selectOptions.appendChild(optionEl); }); customSelect.querySelector('.select-trigger').addEventListener('click', () => { customSelect.classList.toggle('open'); }); document.addEventListener('click', (e) => { if (!customSelect.contains(e.target)) { customSelect.classList.remove('open'); } }); }
+    function setupTabs() { tabNavigation.addEventListener('click', (e) => { const targetButton = e.target.closest('button.tab-btn'); if (targetButton) { const targetId = targetButton.dataset.tab; tabNavigation.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active')); tabContents.forEach(content => content.classList.remove('active')); targetButton.classList.add('active'); document.getElementById(targetId).classList.add('active'); } }); }
+    function setupTheme() { themeToggleBtn.addEventListener('click', () => { document.body.classList.toggle('dark-theme'); let theme = document.body.classList.contains('dark-theme') ? 'dark' : 'light'; localStorage.setItem('theme', theme); }); const savedTheme = localStorage.getItem('theme'); if (savedTheme === 'dark') { document.body.classList.add('dark-theme'); } }
+    function animate() { ctx.clearRect(0, 0, canvas.width, canvas.height); const color = currentParticleColor, animVelocity = currentAnimationVelocity; particles.forEach(p => { p.update(animVelocity); p.draw(color); }); requestAnimationFrame(animate); }
+    
+    function init() {
+        diameterInput.addEventListener('input', (e) => { const val = e.target.value; diameterSlider.value = val; diameterSliderValue.textContent = `${val} mm`; updatePipeAndParticles(); updateSimulation(); });
+        diameterSlider.addEventListener('input', (e) => { const val = e.target.value; diameterInput.value = val; diameterSliderValue.textContent = `${val} mm`; updatePipeAndParticles(); updateSimulation(); });
+        slider.addEventListener('input', updateSimulation);
+        velocityInput.addEventListener('input', updateSimulation);
+        fluidSelector.addEventListener('change', updateSimulation);
+        modeSwitchBtn.addEventListener('click', switchMode);
+        
+        setupCustomSelect();
+        setupTabs();
+        setupTheme();
+        updatePipeAndParticles();
+        animate();
+    }
+    
+    init();
+});
+</script>
+</body>
+</html>
